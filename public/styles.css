@@ -1,0 +1,69 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+h1 {
+  margin-bottom: 1rem;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 220px 140px;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+button {
+  padding: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+button {
+  cursor: pointer;
+  align-self: end;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  color: #cbd5e1;
+}
+
+.viewer-wrap {
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #020617;
+}
+
+#viewerCanvas {
+  width: 100%;
+  display: block;
+  aspect-ratio: 16 / 9;
+  outline: none;
+}

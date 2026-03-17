@@ -1,0 +1,46 @@
+{
+  "IN": {
+    "label": "India",
+    "proxy": {
+      "provider": "dataimpulse",
+      "host": "gw.dataimpulse.com",
+      "port": 823,
+      "login": "YOUR_DATAIMPULSE_LOGIN",
+      "password": "YOUR_DATAIMPULSE_PASSWORD",
+      "countryProxyCode": "in"
+    }
+  },
+  "US": {
+    "label": "United States",
+    "proxy": {
+      "provider": "dataimpulse",
+      "host": "gw.dataimpulse.com",
+      "port": 823,
+      "login": "YOUR_DATAIMPULSE_LOGIN",
+      "password": "YOUR_DATAIMPULSE_PASSWORD",
+      "countryProxyCode": "us"
+    }
+  },
+  "UK": {
+    "label": "United Kingdom",
+    "proxy": {
+      "provider": "dataimpulse",
+      "host": "gw.dataimpulse.com",
+      "port": 823,
+      "login": "YOUR_DATAIMPULSE_LOGIN",
+      "password": "YOUR_DATAIMPULSE_PASSWORD",
+      "countryProxyCode": "gb"
+    }
+  },
+  "AE": {
+    "label": "United Arab Emirates",
+    "proxy": {
+      "provider": "dataimpulse",
+      "host": "gw.dataimpulse.com",
+      "port": 823,
+      "login": "YOUR_DATAIMPULSE_LOGIN",
+      "password": "YOUR_DATAIMPULSE_PASSWORD",
+      "countryProxyCode": "ae"
+    }
+  }
+}

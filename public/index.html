@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Global Website Viewer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Global Website Viewer</h1>
+
+      <section class="controls">
+        <label>
+          Website URL
+          <input id="urlInput" type="url" placeholder="https://example.com" value="https://example.com" />
+        </label>
+
+        <label>
+          Country
+          <select id="countrySelect"></select>
+        </label>
+
+        <button id="openBtn">Open Website</button>
+      </section>
+
+      <section class="status-row">
+        <p id="statusText">Ready</p>
+        <p id="countryLabel"></p>
+      </section>
+
+      <section class="viewer-wrap">
+        <canvas id="viewerCanvas" width="1280" height="720" tabindex="0"></canvas>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
