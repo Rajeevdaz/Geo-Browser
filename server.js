@@ -99,6 +99,30 @@ function getCountryConfig(countryCode) {
   };
 }
 
+function normalizeKeyForPlaywright(key) {
+  if (!key) return key;
+
+  const map = {
+    ' ': 'Space',
+    Escape: 'Escape',
+    Esc: 'Escape',
+    ArrowUp: 'ArrowUp',
+    ArrowDown: 'ArrowDown',
+    ArrowLeft: 'ArrowLeft',
+    ArrowRight: 'ArrowRight',
+    Enter: 'Enter',
+    Tab: 'Tab',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+    Home: 'Home',
+    End: 'End',
+    PageUp: 'PageUp',
+    PageDown: 'PageDown'
+  };
+
+  return map[key] || key;
+}
+
 async function closeSession(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -246,31 +270,49 @@ io.on('connection', (socket) => {
     const session = sessions.get(sessionId);
     if (!session || !event) return;
 
-    const { cdp } = session;
+    const { page } = session;
     resetIdleTimer(sessionId);
 
     try {
       if (event.type === 'mouse') {
-        await cdp.send('Input.dispatchMouseEvent', {
-          type: event.action,
-          x: event.x,
-          y: event.y,
-          button: event.button || 'none',
-          deltaX: event.deltaX || 0,
-          deltaY: event.deltaY || 0,
-          clickCount: event.clickCount || 0
-        });
+        const x = Number.isFinite(event.x) ? event.x : 0;
+        const y = Number.isFinite(event.y) ? event.y : 0;
+        const button = event.button || 'left';
+
+        if (event.action === 'mouseMoved') {
+          await page.mouse.move(x, y);
+        }
+
+        if (event.action === 'mousePressed') {
+          await page.mouse.move(x, y);
+          await page.mouse.down({ button });
+        }
+
+        if (event.action === 'mouseReleased') {
+          await page.mouse.move(x, y);
+          await page.mouse.up({ button });
+        }
+
+        if (event.action === 'mouseWheel') {
+          await page.mouse.move(x, y);
+          await page.mouse.wheel(event.deltaX || 0, event.deltaY || 0);
+        }
       }
 
       if (event.type === 'keyboard') {
-        await cdp.send('Input.dispatchKeyEvent', {
-          type: event.action,
-          key: event.key,
-          text: event.text,
-          code: event.code,
-          windowsVirtualKeyCode: event.keyCode || 0,
-          nativeVirtualKeyCode: event.keyCode || 0
-        });
+        const key = normalizeKeyForPlaywright(event.key);
+
+        if (event.action === 'keyDown') {
+          if (event.text && event.text.length === 1) {
+            await page.keyboard.insertText(event.text);
+          } else {
+            await page.keyboard.down(key);
+          }
+        }
+
+        if (event.action === 'keyUp' && !(event.text && event.text.length === 1)) {
+          await page.keyboard.up(key);
+        }
       }
     } catch (_error) {
       // Input can fail transiently during page navigation.

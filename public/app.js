@@ -56,6 +56,10 @@ function emitMouseEvent(action, event, extras = {}) {
   });
 }
 
+function isPrintableKey(event) {
+  return event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+}
+
 openBtn.addEventListener('click', async () => {
   const url = urlInput.value.trim();
   const countryCode = countrySelect.value;
@@ -122,6 +126,7 @@ socket.on('frame', ({ data, viewport }) => {
 
 canvas.addEventListener('mousemove', (event) => emitMouseEvent('mouseMoved', event));
 canvas.addEventListener('mousedown', (event) => {
+  canvas.focus();
   const button = event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left';
   emitMouseEvent('mousePressed', event, { button, clickCount: 1 });
 });
@@ -137,6 +142,8 @@ canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
 canvas.addEventListener('keydown', (event) => {
   if (!currentSessionId) return;
+  event.preventDefault();
+
   socket.emit('input-event', {
     sessionId: currentSessionId,
     event: {
@@ -144,7 +151,7 @@ canvas.addEventListener('keydown', (event) => {
       action: 'keyDown',
       key: event.key,
       code: event.code,
-      text: event.key.length === 1 ? event.key : '',
+      text: isPrintableKey(event) ? event.key : '',
       keyCode: event.keyCode
     }
   });
@@ -152,6 +159,8 @@ canvas.addEventListener('keydown', (event) => {
 
 canvas.addEventListener('keyup', (event) => {
   if (!currentSessionId) return;
+  event.preventDefault();
+
   socket.emit('input-event', {
     sessionId: currentSessionId,
     event: {
