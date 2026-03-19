@@ -15,6 +15,10 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 const VIEWPORT = { width: 1280, height: 720 };
 const SESSION_TTL_MS = 2 * 60 * 1000;
+const SCREENCAST_FORMAT = process.env.SCREENCAST_FORMAT || 'png';
+const SCREENCAST_QUALITY = Math.max(0, Math.min(100, Number(process.env.SCREENCAST_QUALITY || 100)));
+const PUBLISHER_FPS = Math.max(1, Number(process.env.PUBLISHER_FPS || 30));
+const WEBRTC_MAX_BITRATE = Math.max(250000, Number(process.env.WEBRTC_MAX_BITRATE || 8000000));
 const PUBLISHER_URL = `http://127.0.0.1:${PORT}/webrtc-publisher.html`;
 const proxyConfigPath = path.join(__dirname, 'proxy.config.json');
 
@@ -216,7 +220,7 @@ async function createPublisher(sessionId) {
   });
   const publisherPage = await publisherContext.newPage();
 
-  await publisherPage.goto(`${PUBLISHER_URL}?sessionId=${encodeURIComponent(sessionId)}`, {
+  await publisherPage.goto(`${PUBLISHER_URL}?sessionId=${encodeURIComponent(sessionId)}&fps=${encodeURIComponent(PUBLISHER_FPS)}&maxBitrate=${encodeURIComponent(WEBRTC_MAX_BITRATE)}`, {
     waitUntil: 'domcontentloaded',
     timeout: 30000
   });
@@ -304,13 +308,18 @@ app.post('/api/session', async (req, res) => {
 
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
-    await cdp.send('Page.startScreencast', {
-      format: 'jpeg',
-      quality: 70,
+    const screencastOptions = {
+      format: SCREENCAST_FORMAT,
       maxWidth: VIEWPORT.width,
       maxHeight: VIEWPORT.height,
       everyNthFrame: 1
-    });
+    };
+
+    if (SCREENCAST_FORMAT === 'jpeg') {
+      screencastOptions.quality = SCREENCAST_QUALITY;
+    }
+
+    await cdp.send('Page.startScreencast', screencastOptions);
 
     const sessionId = uuidv4();
 
@@ -341,7 +350,8 @@ app.post('/api/session', async (req, res) => {
       if (currentSession) {
         queuePublisherFrame(currentSession, {
           data: frame.data,
-          viewport: VIEWPORT
+          viewport: VIEWPORT,
+          format: SCREENCAST_FORMAT
         });
       }
 

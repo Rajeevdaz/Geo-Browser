@@ -1,5 +1,7 @@
 const params = new URLSearchParams(window.location.search);
 const sessionId = params.get('sessionId');
+const targetFps = Math.max(1, Number(params.get('fps') || 30));
+const maxBitrate = Math.max(250000, Number(params.get('maxBitrate') || 8000000));
 
 const socket = io();
 const canvas = document.getElementById('frameCanvas');
@@ -20,9 +22,19 @@ function getPeerConnection() {
     ]
   });
 
-  capturedStream = canvas.captureStream(30);
+  capturedStream = canvas.captureStream(targetFps);
   capturedStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, capturedStream);
+    track.contentHint = 'detail';
+    const sender = peerConnection.addTrack(track, capturedStream);
+    const parameters = sender.getParameters();
+    parameters.encodings = parameters.encodings || [{}];
+    parameters.encodings[0].maxBitrate = maxBitrate;
+    parameters.encodings[0].maxFramerate = targetFps;
+    parameters.encodings[0].scaleResolutionDownBy = 1;
+
+    sender.setParameters(parameters).catch(() => {
+      // Browsers may reject some sender parameter changes; keep the stream alive with defaults.
+    });
   });
 
   peerConnection.onicecandidate = (event) => {
@@ -41,18 +53,20 @@ function getPeerConnection() {
   return peerConnection;
 }
 
-window.receiveFrame = async ({ data, viewport }) => new Promise((resolve, reject) => {
+window.receiveFrame = async ({ data, viewport, format }) => new Promise((resolve, reject) => {
   const image = new Image();
 
   image.onload = () => {
     canvas.width = viewport.width;
     canvas.height = viewport.height;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(image, 0, 0, viewport.width, viewport.height);
     resolve();
   };
 
   image.onerror = reject;
-  image.src = `data:image/jpeg;base64,${data}`;
+  image.src = `data:image/${format || 'png'};base64,${data}`;
 });
 
 socket.on('connect', () => {

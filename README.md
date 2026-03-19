@@ -86,6 +86,20 @@ The media flow is:
 
 Result: users still interact with a real remote browser, but the visual path now uses WebRTC instead of directly repainting JPEG frames in the user-facing page.
 
+### Visual quality tuning
+
+The default configuration now favors sharper output:
+
+- `SCREENCAST_FORMAT=png` for lossless CDP frames before they enter the WebRTC publisher
+- `PUBLISHER_FPS=30` for the canvas capture stream
+- `WEBRTC_MAX_BITRATE=8000000` to give the outbound video track more room for text-heavy pages
+
+If you need to trade image quality against CPU/network usage, you can override:
+
+```bash
+SCREENCAST_FORMAT=jpeg SCREENCAST_QUALITY=90 WEBRTC_MAX_BITRATE=6000000 npm start
+```
+
 ## Run locally
 
 1. Install dependencies:
