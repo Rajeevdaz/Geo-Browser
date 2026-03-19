@@ -1,7 +1,7 @@
 {
   "name": "global-website-viewer",
   "version": "1.0.0",
-  "description": "MVP live geo-browser viewer using Playwright + CDP screencast streaming",
+  "description": "MVP live geo-browser viewer using Playwright + WebRTC video streaming",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

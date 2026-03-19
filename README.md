@@ -7,12 +7,14 @@ A minimal full-stack web app to open live browser sessions through country-speci
 ```text
 .
 ├── public/
-│   ├── app.js                  # Frontend logic + socket events + interaction forwarding
-│   ├── index.html              # UI (URL input, country dropdown, viewer canvas)
+│   ├── app.js                  # Frontend logic + WebRTC viewer + interaction forwarding
+│   ├── index.html              # UI (URL input, country dropdown, viewer video)
 │   └── styles.css              # Basic styling
+│   ├── webrtc-publisher.html   # Hidden publisher page loaded in a local Chromium instance
+│   └── webrtc-publisher.js     # WebRTC publisher that turns frames into a video track
 ├── proxy.config.example.json   # Example country -> proxy mapping
 ├── proxy.config.json           # Active proxy mapping used by backend
-├── server.js                   # Express API + Playwright launch + live CDP frame/input bridge
+├── server.js                   # Express API + Playwright launch + WebRTC signaling/media bridge
 ├── package.json
 └── README.md
 ```
@@ -69,15 +71,20 @@ Examples:
 
 ### Browser streaming and interactivity
 
-The backend creates a Chromium page and opens a Chrome DevTools Protocol session:
+The backend creates two Chromium instances per session:
 
-- `Page.startScreencast` streams JPEG frames from the live page.
-- Frames are emitted to frontend through Socket.IO.
-- Frontend paints frames onto a `<canvas>`.
-- Mouse and keyboard events on the canvas are sent back through Socket.IO.
-- Backend forwards those events to Chrome CDP (`Input.dispatchMouseEvent` and `Input.dispatchKeyEvent`).
+1. **Target browser**: opens the requested site through the selected country proxy.
+2. **Publisher browser**: opens a local `webrtc-publisher.html` page with a canvas-backed WebRTC sender.
 
-Result: users can click, type, and scroll in a real remote browser session.
+The media flow is:
+
+- `Page.startScreencast` captures frames from the target browser page.
+- The Node backend forwards the latest frame to the hidden publisher page.
+- The publisher page draws frames to a canvas and exposes `canvas.captureStream(30)` as a WebRTC video track.
+- The frontend receives that WebRTC track in a `<video>` element.
+- Mouse and keyboard events on the video element are still sent back through Socket.IO and executed with Playwright’s native input APIs.
+
+Result: users still interact with a real remote browser, but the visual path now uses WebRTC instead of directly repainting JPEG frames in the user-facing page.
 
 ## Run locally
 
@@ -122,5 +129,5 @@ You can use either:
 ## Notes / MVP scope
 
 - Session closes after inactivity.
-- Basic error handling included for invalid URL, missing country, and proxy/session issues.
+- Basic error handling included for invalid URL, missing country, proxy/session issues, and WebRTC signaling failures.
 - For production: add auth, rate limiting, secure secrets management, and stricter isolation.

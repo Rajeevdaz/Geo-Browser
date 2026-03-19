@@ -61,9 +61,11 @@ button {
   background: #020617;
 }
 
-#viewerCanvas {
+#viewerVideo {
   width: 100%;
   display: block;
   aspect-ratio: 16 / 9;
   outline: none;
+  background: #000;
+  object-fit: contain;
 }

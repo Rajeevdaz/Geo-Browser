@@ -15,6 +15,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 const VIEWPORT = { width: 1280, height: 720 };
 const SESSION_TTL_MS = 2 * 60 * 1000;
+const PUBLISHER_URL = `http://127.0.0.1:${PORT}/webrtc-publisher.html`;
 const proxyConfigPath = path.join(__dirname, 'proxy.config.json');
 
 app.use(express.json());
@@ -123,6 +124,108 @@ function normalizeKeyForPlaywright(key) {
   return map[key] || key;
 }
 
+function getSocketIdForRole(session, role) {
+  return role === 'viewer' ? session.viewerSocketId : session.publisherSocketId;
+}
+
+function queueSignal(session, targetRole, signal) {
+  if (!session.pendingSignals[targetRole]) {
+    session.pendingSignals[targetRole] = [];
+  }
+
+  session.pendingSignals[targetRole].push(signal);
+}
+
+function deliverSignal(session, targetRole, signal) {
+  const socketId = getSocketIdForRole(session, targetRole);
+
+  if (!socketId) {
+    queueSignal(session, targetRole, signal);
+    return;
+  }
+
+  io.to(socketId).emit('webrtc-signal', {
+    sessionId: session.id,
+    signal
+  });
+}
+
+function flushSignals(session, role) {
+  const socketId = getSocketIdForRole(session, role);
+  if (!socketId) return;
+
+  const queue = session.pendingSignals[role] || [];
+  while (queue.length > 0) {
+    const signal = queue.shift();
+    io.to(socketId).emit('webrtc-signal', {
+      sessionId: session.id,
+      signal
+    });
+  }
+}
+
+function queuePublisherFrame(session, payload) {
+  if (!session.publisherPage) return;
+
+  session.pendingFrame = payload;
+
+  if (session.publisherFrameInFlight) {
+    return;
+  }
+
+  const flushFrame = async () => {
+    if (!session.publisherPage || !session.pendingFrame || session.publisherFrameInFlight) {
+      return;
+    }
+
+    const nextFrame = session.pendingFrame;
+    session.pendingFrame = null;
+    session.publisherFrameInFlight = true;
+
+    try {
+      await session.publisherPage.evaluate(async (framePayload) => {
+        if (typeof window.receiveFrame === 'function') {
+          await window.receiveFrame(framePayload);
+        }
+      }, nextFrame);
+    } catch (_error) {
+      // Ignore transient publisher failures; a later frame may recover once the publisher reconnects.
+    } finally {
+      session.publisherFrameInFlight = false;
+      if (session.pendingFrame) {
+        await flushFrame();
+      }
+    }
+  };
+
+  flushFrame().catch(() => {
+    session.publisherFrameInFlight = false;
+  });
+}
+
+async function createPublisher(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session || session.publisherPage) return;
+
+  const publisherBrowser = await chromium.launch({
+    headless: true,
+    args: ['--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required']
+  });
+  const publisherContext = await publisherBrowser.newContext({
+    viewport: VIEWPORT
+  });
+  const publisherPage = await publisherContext.newPage();
+
+  await publisherPage.goto(`${PUBLISHER_URL}?sessionId=${encodeURIComponent(sessionId)}`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30000
+  });
+
+  session.publisherBrowser = publisherBrowser;
+  session.publisherContext = publisherContext;
+  session.publisherPage = publisherPage;
+}
+
 async function closeSession(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -137,6 +240,14 @@ async function closeSession(sessionId) {
 
   try {
     await session.browser.close();
+  } catch (_error) {
+    // ignore cleanup errors
+  }
+
+  try {
+    if (session.publisherBrowser) {
+      await session.publisherBrowser.close();
+    }
   } catch (_error) {
     // ignore cleanup errors
   }
@@ -211,15 +322,28 @@ app.post('/api/session', async (req, res) => {
       cdp,
       countryLabel: country.label,
       clients: new Set(),
-      idleTimer: null
+      idleTimer: null,
+      viewerSocketId: null,
+      publisherSocketId: null,
+      pendingSignals: {
+        viewer: [],
+        publisher: []
+      },
+      publisherBrowser: null,
+      publisherContext: null,
+      publisherPage: null,
+      publisherFrameInFlight: false,
+      pendingFrame: null
     };
 
     cdp.on('Page.screencastFrame', async (frame) => {
-      io.to(sessionId).emit('frame', {
-        data: frame.data,
-        metadata: frame.metadata,
-        viewport: VIEWPORT
-      });
+      const currentSession = sessions.get(sessionId);
+      if (currentSession) {
+        queuePublisherFrame(currentSession, {
+          data: frame.data,
+          viewport: VIEWPORT
+        });
+      }
 
       try {
         await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
@@ -229,6 +353,7 @@ app.post('/api/session', async (req, res) => {
     });
 
     sessions.set(sessionId, session);
+    await createPublisher(sessionId);
     resetIdleTimer(sessionId);
 
     res.json({
@@ -264,6 +389,29 @@ io.on('connection', (socket) => {
       countryLabel: session.countryLabel,
       viewport: VIEWPORT
     });
+  });
+
+  socket.on('register-viewer', ({ sessionId }) => {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    session.viewerSocketId = socket.id;
+    flushSignals(session, 'viewer');
+  });
+
+  socket.on('register-publisher', ({ sessionId }) => {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    session.publisherSocketId = socket.id;
+    flushSignals(session, 'publisher');
+  });
+
+  socket.on('webrtc-signal', ({ sessionId, targetRole, signal }) => {
+    const session = sessions.get(sessionId);
+    if (!session || !targetRole || !signal) return;
+
+    deliverSignal(session, targetRole, signal);
   });
 
   socket.on('input-event', async ({ sessionId, event }) => {
@@ -321,6 +469,14 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', async () => {
     for (const [sessionId, session] of sessions.entries()) {
+      if (session.viewerSocketId === socket.id) {
+        session.viewerSocketId = null;
+      }
+
+      if (session.publisherSocketId === socket.id) {
+        session.publisherSocketId = null;
+      }
+
       if (session.clients.has(socket.id)) {
         session.clients.delete(socket.id);
 

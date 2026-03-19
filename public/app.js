@@ -3,15 +3,35 @@ const countrySelect = document.getElementById('countrySelect');
 const openBtn = document.getElementById('openBtn');
 const statusText = document.getElementById('statusText');
 const countryLabel = document.getElementById('countryLabel');
-const canvas = document.getElementById('viewerCanvas');
-const ctx = canvas.getContext('2d');
+const viewerVideo = document.getElementById('viewerVideo');
 
 const socket = io();
 let currentSessionId = null;
 let serverViewport = { width: 1280, height: 720 };
+let peerConnection = null;
+let remoteStream = null;
+let pendingIceCandidates = [];
 
 function setStatus(message) {
   statusText.textContent = message;
+}
+
+function closePeerConnection() {
+  if (peerConnection) {
+    peerConnection.ontrack = null;
+    peerConnection.onicecandidate = null;
+    peerConnection.onconnectionstatechange = null;
+    peerConnection.close();
+    peerConnection = null;
+  }
+
+  if (remoteStream) {
+    remoteStream.getTracks().forEach((track) => track.stop());
+    remoteStream = null;
+  }
+
+  viewerVideo.srcObject = null;
+  pendingIceCandidates = [];
 }
 
 async function loadCountries() {
@@ -27,8 +47,8 @@ async function loadCountries() {
   });
 }
 
-function canvasToRemotePoint(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect();
+function viewerToRemotePoint(clientX, clientY) {
+  const rect = viewerVideo.getBoundingClientRect();
   const x = ((clientX - rect.left) / rect.width) * serverViewport.width;
   const y = ((clientY - rect.top) / rect.height) * serverViewport.height;
 
@@ -40,7 +60,7 @@ function canvasToRemotePoint(clientX, clientY) {
 
 function emitMouseEvent(action, event, extras = {}) {
   if (!currentSessionId) return;
-  const point = canvasToRemotePoint(event.clientX, event.clientY);
+  const point = viewerToRemotePoint(event.clientX, event.clientY);
   socket.emit('input-event', {
     sessionId: currentSessionId,
     event: {
@@ -60,6 +80,63 @@ function isPrintableKey(event) {
   return event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
 }
 
+async function setupWebRtc(sessionId) {
+  closePeerConnection();
+  setStatus('Starting WebRTC stream...');
+
+  const connection = new RTCPeerConnection({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]
+  });
+
+  peerConnection = connection;
+  connection.addTransceiver('video', { direction: 'recvonly' });
+
+  connection.ontrack = (event) => {
+    remoteStream = event.streams[0] || new MediaStream([event.track]);
+    viewerVideo.srcObject = remoteStream;
+    setStatus('Live WebRTC stream connected. Interact in the player.');
+  };
+
+  connection.onicecandidate = (event) => {
+    if (!event.candidate) return;
+
+    socket.emit('webrtc-signal', {
+      sessionId,
+      targetRole: 'publisher',
+      signal: {
+        type: 'ice-candidate',
+        candidate: event.candidate
+      }
+    });
+  };
+
+  connection.onconnectionstatechange = () => {
+    if (connection.connectionState === 'failed') {
+      setStatus('WebRTC connection failed.');
+    }
+
+    if (connection.connectionState === 'disconnected') {
+      setStatus('WebRTC connection disconnected.');
+    }
+  };
+
+  socket.emit('register-viewer', { sessionId });
+
+  const offer = await connection.createOffer();
+  await connection.setLocalDescription(offer);
+
+  socket.emit('webrtc-signal', {
+    sessionId,
+    targetRole: 'publisher',
+    signal: {
+      type: 'offer',
+      description: connection.localDescription
+    }
+  });
+}
+
 openBtn.addEventListener('click', async () => {
   const url = urlInput.value.trim();
   const countryCode = countrySelect.value;
@@ -73,6 +150,8 @@ openBtn.addEventListener('click', async () => {
   setStatus('Launching browser session...');
 
   try {
+    closePeerConnection();
+
     if (currentSessionId) {
       await fetch(`/api/session/${currentSessionId}`, { method: 'DELETE' });
     }
@@ -92,10 +171,11 @@ openBtn.addEventListener('click', async () => {
     currentSessionId = payload.sessionId;
     serverViewport = payload.viewport;
     countryLabel.textContent = `Browsing from: ${payload.countryLabel}`;
-    setStatus('Connecting stream...');
+    setStatus('Connecting session...');
 
     socket.emit('join-session', { sessionId: currentSessionId });
-    canvas.focus();
+    await setupWebRtc(currentSessionId);
+    viewerVideo.focus();
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -106,41 +186,54 @@ openBtn.addEventListener('click', async () => {
 socket.on('session-joined', ({ countryLabel: label, viewport }) => {
   serverViewport = viewport;
   countryLabel.textContent = `Browsing from: ${label}`;
-  setStatus('Live session connected. Interact on canvas.');
+  setStatus('Browser session ready. Waiting for WebRTC video...');
 });
 
 socket.on('session-error', ({ error }) => {
   setStatus(error || 'Session error');
 });
 
-socket.on('frame', ({ data, viewport }) => {
-  serverViewport = viewport;
-  const img = new Image();
-  img.onload = () => {
-    canvas.width = serverViewport.width;
-    canvas.height = serverViewport.height;
-    ctx.drawImage(img, 0, 0, serverViewport.width, serverViewport.height);
-  };
-  img.src = `data:image/jpeg;base64,${data}`;
+socket.on('webrtc-signal', async ({ sessionId, signal }) => {
+  if (sessionId !== currentSessionId || !peerConnection || !signal) return;
+
+  try {
+    if (signal.type === 'answer' && signal.description) {
+      await peerConnection.setRemoteDescription(signal.description);
+      while (pendingIceCandidates.length > 0) {
+        const candidate = pendingIceCandidates.shift();
+        await peerConnection.addIceCandidate(candidate);
+      }
+    }
+
+    if (signal.type === 'ice-candidate' && signal.candidate) {
+      if (peerConnection.remoteDescription) {
+        await peerConnection.addIceCandidate(signal.candidate);
+      } else {
+        pendingIceCandidates.push(signal.candidate);
+      }
+    }
+  } catch (error) {
+    setStatus(error.message || 'Failed to process WebRTC signaling.');
+  }
 });
 
-canvas.addEventListener('mousemove', (event) => emitMouseEvent('mouseMoved', event));
-canvas.addEventListener('mousedown', (event) => {
-  canvas.focus();
+viewerVideo.addEventListener('mousemove', (event) => emitMouseEvent('mouseMoved', event));
+viewerVideo.addEventListener('mousedown', (event) => {
+  viewerVideo.focus();
   const button = event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left';
   emitMouseEvent('mousePressed', event, { button, clickCount: 1 });
 });
-canvas.addEventListener('mouseup', (event) => {
+viewerVideo.addEventListener('mouseup', (event) => {
   const button = event.button === 2 ? 'right' : event.button === 1 ? 'middle' : 'left';
   emitMouseEvent('mouseReleased', event, { button, clickCount: 1 });
 });
-canvas.addEventListener('wheel', (event) => {
+viewerVideo.addEventListener('wheel', (event) => {
   event.preventDefault();
   emitMouseEvent('mouseWheel', event, { deltaX: event.deltaX, deltaY: event.deltaY });
 }, { passive: false });
-canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+viewerVideo.addEventListener('contextmenu', (event) => event.preventDefault());
 
-canvas.addEventListener('keydown', (event) => {
+viewerVideo.addEventListener('keydown', (event) => {
   if (!currentSessionId) return;
   event.preventDefault();
 
@@ -157,7 +250,7 @@ canvas.addEventListener('keydown', (event) => {
   });
 });
 
-canvas.addEventListener('keyup', (event) => {
+viewerVideo.addEventListener('keyup', (event) => {
   if (!currentSessionId) return;
   event.preventDefault();
 
@@ -175,6 +268,8 @@ canvas.addEventListener('keyup', (event) => {
 });
 
 window.addEventListener('beforeunload', async () => {
+  closePeerConnection();
+
   if (currentSessionId) {
     await fetch(`/api/session/${currentSessionId}`, { method: 'DELETE' });
   }
