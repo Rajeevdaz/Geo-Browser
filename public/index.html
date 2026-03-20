@@ -8,28 +8,72 @@
   </head>
   <body>
     <main class="container">
-      <h1>Global Website Viewer</h1>
+      <header class="topbar">
+        <div class="brand-block">
+          <span class="brand-kicker">network</span>
+          <div class="brand-mark">GWV</div>
+        </div>
 
-      <section class="controls">
-        <label>
-          Website URL
-          <input id="urlInput" type="url" placeholder="https://example.com" value="https://example.com" />
-        </label>
+        <nav class="nav-pill" aria-label="Primary">
+          <a href="#viewer">Live Viewer</a>
+          <a href="#controls">Proxy Controls</a>
+          <a href="#quality">Quality</a>
+          <a href="#status">Status</a>
+        </nav>
 
-        <label>
-          Country
-          <select id="countrySelect"></select>
-        </label>
+        <button class="theme-cta" type="button">Launch Global View</button>
+      </header>
 
-        <button id="openBtn">Open Website</button>
+      <section class="hero">
+        <p class="eyebrow">Interactive geo-browser</p>
+        <h1>Open websites from anywhere.</h1>
+        <p class="hero-copy">
+          Route a live Playwright browser through your selected country proxy and interact with it in real
+          time through the WebRTC viewer.
+        </p>
       </section>
 
-      <section class="status-row">
-        <p id="statusText">Ready</p>
-        <p id="countryLabel"></p>
+      <section class="controls-panel" id="controls">
+        <article class="info-card status-card" id="status">
+          <span class="card-chip">Session Status</span>
+          <p id="statusText">Ready</p>
+          <p id="countryLabel"></p>
+        </article>
+
+        <article class="info-card form-card">
+          <span class="card-chip">Session Setup</span>
+          <section class="controls">
+            <label>
+              Website URL
+              <input id="urlInput" type="url" placeholder="https://example.com" value="https://example.com" />
+            </label>
+
+            <label>
+              Country
+              <select id="countrySelect"></select>
+            </label>
+
+            <button id="openBtn">Open Website</button>
+          </section>
+        </article>
       </section>
 
-      <section class="viewer-wrap">
+      <section class="quality-strip" id="quality">
+        <article class="quality-card">
+          <span class="quality-title">WebRTC Stream</span>
+          <p>Low-latency live playback inside a focused viewer surface.</p>
+        </article>
+        <article class="quality-card">
+          <span class="quality-title">Country Routing</span>
+          <p>Switch the browser session to any configured proxy region instantly.</p>
+        </article>
+        <article class="quality-card">
+          <span class="quality-title">Real Interaction</span>
+          <p>Click, type, and scroll directly on the remote page stream.</p>
+        </article>
+      </section>
+
+      <section class="viewer-wrap" id="viewer">
         <video
           id="viewerVideo"
           playsinline
