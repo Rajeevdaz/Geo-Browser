@@ -161,7 +161,6 @@ h1 {
 }
 
 .info-card,
-.quality-card,
 .viewer-wrap {
   position: relative;
   overflow: hidden;
@@ -198,8 +197,7 @@ h1 {
   background: rgba(255, 255, 255, 0.62);
 }
 
-.card-chip,
-.quality-title {
+.card-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -270,31 +268,6 @@ button:focus-visible,
   transform: none;
 }
 
-.quality-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-  margin-bottom: 28px;
-}
-
-.quality-card {
-  min-height: 170px;
-  padding: 28px;
-  background: rgba(24, 22, 31, 0.94);
-  color: #fff;
-}
-
-.quality-card p {
-  margin: 18px 0 0;
-  font-size: 1.05rem;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.76);
-}
-
-.quality-card .quality-title {
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .viewer-wrap {
   background: rgba(19, 17, 24, 0.92);
   padding: 14px;
@@ -323,8 +296,7 @@ button:focus-visible,
     justify-self: start;
   }
 
-  .controls-panel,
-  .quality-strip {
+  .controls-panel {
     grid-template-columns: 1fr;
   }
 }
