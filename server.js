@@ -15,6 +15,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 const VIEWPORT = { width: 1280, height: 720 };
 const SESSION_TTL_MS = 2 * 60 * 1000;
+const NAVIGATION_TIMEOUT_MS = Math.max(10000, Number(process.env.NAVIGATION_TIMEOUT_MS || 30000));
 const SCREENCAST_FORMAT = process.env.SCREENCAST_FORMAT || 'png';
 const SCREENCAST_QUALITY = Math.max(0, Math.min(100, Number(process.env.SCREENCAST_QUALITY || 100)));
 const PUBLISHER_FPS = Math.max(1, Number(process.env.PUBLISHER_FPS || 30));
@@ -126,6 +127,24 @@ function normalizeKeyForPlaywright(key) {
   };
 
   return map[key] || key;
+}
+
+function toClientError(error) {
+  const message = String(error && error.message ? error.message : error || 'Unknown error');
+
+  if (message.includes('ERR_TIMED_OUT') || message.includes('Timeout') || message.includes('timeout')) {
+    return 'Website did not load in time through the selected proxy. Try another country or increase NAVIGATION_TIMEOUT_MS.';
+  }
+
+  if (message.includes('ERR_TUNNEL_CONNECTION_FAILED') || message.includes('ERR_PROXY_CONNECTION_FAILED')) {
+    return 'Proxy connection failed. Verify proxy host/port and credentials for this country.';
+  }
+
+  if (message.includes('ERR_PROXY_AUTH_UNSUPPORTED') || message.includes('Proxy Authentication Required')) {
+    return 'Proxy authentication failed. Check your proxy username/password and country code suffix.';
+  }
+
+  return message;
 }
 
 function getSocketIdForRole(session, role) {
@@ -304,7 +323,7 @@ app.post('/api/session', async (req, res) => {
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);
 
-    await page.goto(safeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.goto(safeUrl, { waitUntil: 'commit', timeout: NAVIGATION_TIMEOUT_MS });
 
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
@@ -363,7 +382,9 @@ app.post('/api/session', async (req, res) => {
     });
 
     sessions.set(sessionId, session);
-    await createPublisher(sessionId);
+    createPublisher(sessionId).catch((publisherError) => {
+      console.error(`[session ${sessionId}] publisher startup failed:`, publisherError.message);
+    });
     resetIdleTimer(sessionId);
 
     res.json({
@@ -372,7 +393,7 @@ app.post('/api/session', async (req, res) => {
       viewport: VIEWPORT
     });
   } catch (error) {
-    res.status(400).json({ error: error.message || 'Failed to create session' });
+    res.status(400).json({ error: toClientError(error) || 'Failed to create session' });
   }
 });
 

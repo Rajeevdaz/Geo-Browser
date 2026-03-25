@@ -100,6 +100,12 @@ If you need to trade image quality against CPU/network usage, you can override:
 SCREENCAST_FORMAT=jpeg SCREENCAST_QUALITY=90 WEBRTC_MAX_BITRATE=6000000 npm start
 ```
 
+If some websites (for example `google.com`) hang on **Launching browser session...**, tune navigation timeout:
+
+```bash
+NAVIGATION_TIMEOUT_MS=45000 npm start
+```
+
 ## Run locally
 
 1. Install dependencies:
