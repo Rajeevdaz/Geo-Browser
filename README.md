@@ -1,4 +1,4 @@
-# Global Website Viewer (MVP)
+# Global Website Viewer
 
 A minimal full-stack web app to open live browser sessions through country-specific proxies.
 
@@ -146,7 +146,7 @@ You can use either:
 
 `GET /api/countries` auto-populates the frontend dropdown using top-level country keys.
 
-## Notes / MVP scope
+## Notes
 
 - Session closes after inactivity.
 - Basic error handling included for invalid URL, missing country, proxy/session issues, and WebRTC signaling failures.
